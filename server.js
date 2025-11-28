@@ -20,6 +20,9 @@ mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/google-docs-clone
 // Initialize Express app
 const app = express()
 
+// Trust proxy - Required for Railway/Heroku/Render to get real client IP
+app.set('trust proxy', 1)
+
 // Middleware
 // Security headers
 app.use(helmet({
