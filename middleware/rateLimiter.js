@@ -22,7 +22,7 @@ const apiLimiter = createLimiter({
 // Strict rate limiter for auth routes
 const authLimiter = createLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 20, // Limit each IP to 20 requests per windowMs (increased for better UX)
     message: 'Too many authentication attempts, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,

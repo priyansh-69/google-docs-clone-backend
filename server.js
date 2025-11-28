@@ -27,24 +27,35 @@ app.use(helmet({
 }))
 
 // CORS configuration
-// CORS configuration
 const allowedOrigins = [
-  "http://localhost:3000",
-  "https://google-docs-clone-frontend-puce.vercel.app",
-  process.env.CLIENT_URL
-].filter(Boolean)
+  "http://localhost:3000",  // Local development
+  "https://google-docs-clone-frontend-puce.vercel.app",  // Vercel production
+  process.env.CLIENT_URL  // Additional from env
+].filter(Boolean);
+
+// Log allowed origins for debugging
+console.log('🔒 Allowed CORS Origins:', allowedOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true)
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Check if origin is allowed
+    if (allowedOrigins.includes(origin)) {
+      console.log('✅ CORS allowed:', origin);
+      callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'))
+      console.log('❌ CORS BLOCKED:', origin);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range']
 }))
 
 // Body parsing
@@ -52,11 +63,19 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: false, limit: '10mb' }))
 
 // Data sanitization against NoSQL injection
-// Data sanitization against NoSQL injection
-// app.use(mongoSanitize())
+app.use(mongoSanitize())
 
 // Rate limiting
 app.use('/api/', apiLimiter)
+
+// Health check endpoint (for deployment platforms)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  })
+})
 
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"))
