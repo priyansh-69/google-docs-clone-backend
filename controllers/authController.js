@@ -14,24 +14,36 @@ const generateToken = (id) => {
 // @access  Public
 const registerUser = async (req, res) => {
     try {
+        console.log('📝 Registration attempt:', req.body)
         const { username, email, password } = req.body
 
         if (!username || !email || !password) {
+            console.log('❌ Missing fields:', { username: !!username, email: !!email, password: !!password })
             return res.status(400).json({ message: "Please provide all fields" })
         }
 
+        // Check if JWT_SECRET is set
+        if (!process.env.JWT_SECRET) {
+            console.error('🚨 CRITICAL: JWT_SECRET is not set!')
+            return res.status(500).json({ message: "Server configuration error" })
+        }
+
         // Check if user exists
+        console.log('🔍 Checking if user exists:', email)
         const userExists = await User.findOne({ email })
 
         if (userExists) {
+            console.log('❌ User already exists:', email)
             return res.status(400).json({ message: "User already exists" })
         }
 
         // Hash password
+        console.log('🔒 Hashing password...')
         const salt = await bcrypt.genSalt(10)
         const hashedPassword = await bcrypt.hash(password, salt)
 
         // Create user
+        console.log('💾 Creating user in database...')
         const user = await User.create({
             username,
             email,
@@ -39,18 +51,27 @@ const registerUser = async (req, res) => {
         })
 
         if (user) {
+            console.log('✅ User created successfully:', user._id)
+            const token = generateToken(user._id)
             res.status(201).json({
                 _id: user.id,
                 username: user.username,
                 email: user.email,
-                token: generateToken(user._id),
+                token: token,
             })
         } else {
+            console.log('❌ User creation failed')
             res.status(400).json({ message: "Invalid user data" })
         }
     } catch (error) {
-        console.error(error)
-        res.status(500).json({ message: "Server error" })
+        console.error('🚨 Registration error:', error)
+        console.error('🚨 Error name:', error.name)
+        console.error('🚨 Error message:', error.message)
+        console.error('🚨 Error stack:', error.stack)
+        res.status(500).json({
+            message: "Server error",
+            error: process.env.NODE_ENV === 'production' ? undefined : error.message
+        })
     }
 }
 
