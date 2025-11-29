@@ -119,12 +119,12 @@ io.on("connection", socket => {
     const document = await findOrCreateDocument(documentId)
     socket.join(documentId)
 
-    // Initialize user tracking for this document
+    // Initialize user tracking for this document (use Map instead of Set)
     if (!documentUsers.has(documentId)) {
-      documentUsers.set(documentId, new Set())
+      documentUsers.set(documentId, new Map()) // socketId -> userInfo
     }
 
-    // Add user to document
+    // Add user to document (using Map to prevent duplicates)
     const userInfo = {
       socketId: socket.id,
       userId: user?._id || socket.id,
@@ -133,13 +133,13 @@ io.on("connection", socket => {
     }
 
     const users = documentUsers.get(documentId)
-    users.add(userInfo)
+    users.set(socket.id, userInfo) // Use socketId as key to prevent duplicates
 
     // Send document data to the user
     socket.emit("load-document", document.data)
 
     // Notify all users in the document about the new user
-    const activeUsers = Array.from(users).map(u => ({
+    const activeUsers = Array.from(users.values()).map(u => ({
       userId: u.userId,
       username: u.username,
       color: u.color
@@ -187,23 +187,21 @@ io.on("connection", socket => {
 
       if (documentUsers.has(documentId)) {
         const users = documentUsers.get(documentId)
-        // Remove user from the set
-        for (let user of users) {
-          if (user.socketId === socket.id) {
-            users.delete(user)
 
-            // Notify others that user left
-            io.to(documentId).emit("user-left", {
-              userId: userInfo.userId,
-              username: userInfo.username,
-              activeUsers: Array.from(users).map(u => ({
-                userId: u.userId,
-                username: u.username,
-                color: u.color
-              }))
-            })
-            break
-          }
+        // Remove user from the map
+        if (users.has(socket.id)) {
+          users.delete(socket.id)
+
+          // Notify others that user left
+          io.to(documentId).emit("user-left", {
+            userId: userInfo.userId,
+            username: userInfo.username,
+            activeUsers: Array.from(users.values()).map(u => ({
+              userId: u.userId,
+              username: u.username,
+              color: u.color
+            }))
+          })
         }
 
         // Clean up if no users left
