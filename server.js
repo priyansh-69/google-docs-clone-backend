@@ -98,6 +98,38 @@ const io = new Server(server, {
   },
 })
 
+// Socket.io authentication middleware
+const jwt = require("jsonwebtoken")
+const User = require("./User")
+
+io.use(async (socket, next) => {
+  try {
+    // Get token from handshake auth or query
+    const token = socket.handshake.auth.token || socket.handshake.query.token
+
+    if (!token) {
+      return next(new Error("Authentication error: No token provided"))
+    }
+
+    // Verify JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+
+    // Get user from database
+    const user = await User.findById(decoded.id).select('-password')
+
+    if (!user) {
+      return next(new Error("Authentication error: User not found"))
+    }
+
+    // Attach user to socket
+    socket.user = user
+    next()
+  } catch (error) {
+    console.error("Socket auth error:", error.message)
+    next(new Error("Authentication error: Invalid token"))
+  }
+})
+
 const defaultValue = ""
 
 // Track active users per document
@@ -115,63 +147,107 @@ function generateUserColor() {
 io.on("connection", socket => {
   console.log("User connected:", socket.id)
 
-  socket.on("get-document", async ({ documentId, user }) => {
-    const document = await findOrCreateDocument(documentId)
-    socket.join(documentId)
+  socket.on("get-document", async ({ documentId }) => {
+    try {
+      // Use authenticated user from socket (set by middleware)
+      const authenticatedUser = socket.user
 
-    // Initialize user tracking for this document (use Map instead of Set)
-    if (!documentUsers.has(documentId)) {
-      documentUsers.set(documentId, new Map()) // socketId -> userInfo
+      // Get document from database
+      const document = await findOrCreateDocument(documentId)
+
+      // Check if user has permission to access this document
+      const isOwner = document.owner && document.owner.toString() === authenticatedUser._id.toString()
+      const isCollaborator = document.collaborators && document.collaborators.some(
+        collab => collab.user && collab.user.toString() === authenticatedUser._id.toString()
+      )
+
+      if (!isOwner && !isCollaborator) {
+        socket.emit("error", { message: "You don't have permission to access this document" })
+        return
+      }
+
+      socket.join(documentId)
+
+      // Initialize user tracking for this document (use Map instead of Set)
+      if (!documentUsers.has(documentId)) {
+        documentUsers.set(documentId, new Map()) // socketId -> userInfo
+      }
+
+      // Add user to document (using authenticated user data)
+      const userInfo = {
+        socketId: socket.id,
+        userId: authenticatedUser._id.toString(),
+        username: authenticatedUser.username,
+        email: authenticatedUser.email,
+        color: generateUserColor()
+      }
+
+      const users = documentUsers.get(documentId)
+      users.set(socket.id, userInfo) // Use socketId as key to prevent duplicates
+
+      // Send document data to the user
+      socket.emit("load-document", document.data)
+
+      // Notify all users in the document about the new user
+      const activeUsers = Array.from(users.values()).map(u => ({
+        userId: u.userId,
+        username: u.username,
+        color: u.color
+      }))
+
+      io.to(documentId).emit("user-joined", {
+        user: {
+          userId: userInfo.userId,
+          username: userInfo.username,
+          color: userInfo.color
+        },
+        activeUsers
+      })
+    } catch (error) {
+      console.error("Error in get-document:", error)
+      socket.emit("error", { message: "Failed to load document" })
     }
-
-    // Add user to document (using Map to prevent duplicates)
-    const userInfo = {
-      socketId: socket.id,
-      userId: user?._id || socket.id,
-      username: user?.username || 'Anonymous',
-      color: generateUserColor()
-    }
-
-    const users = documentUsers.get(documentId)
-    users.set(socket.id, userInfo) // Use socketId as key to prevent duplicates
-
-    // Send document data to the user
-    socket.emit("load-document", document.data)
-
-    // Notify all users in the document about the new user
-    const activeUsers = Array.from(users.values()).map(u => ({
-      userId: u.userId,
-      username: u.username,
-      color: u.color
-    }))
-
-    io.to(documentId).emit("user-joined", {
-      user: {
-        userId: userInfo.userId,
-        username: userInfo.username,
-        color: userInfo.color
-      },
-      activeUsers
-    })
 
     // Handle text changes
-    socket.on("send-changes", delta => {
-      socket.broadcast.to(documentId).emit("receive-changes", delta)
+    socket.on("send-changes", (delta) => {
+      try {
+        if (!delta) {
+          console.error("Invalid delta received")
+          return
+        }
+        socket.broadcast.to(documentId).emit("receive-changes", delta)
+      } catch (error) {
+        console.error("Error handling send-changes:", error)
+      }
     })
 
     // Handle cursor movement
-    socket.on("cursor-move", cursorData => {
-      socket.broadcast.to(documentId).emit("cursor-update", {
-        userId: userInfo.userId,
-        username: userInfo.username,
-        color: userInfo.color,
-        ...cursorData
-      })
+    socket.on("cursor-move", (cursorData) => {
+      try {
+        if (!cursorData || typeof cursorData.index !== 'number') {
+          return // Invalid cursor data
+        }
+        socket.broadcast.to(documentId).emit("cursor-update", {
+          userId: userInfo.userId,
+          username: userInfo.username,
+          color: userInfo.color,
+          ...cursorData
+        })
+      } catch (error) {
+        console.error("Error handling cursor-move:", error)
+      }
     })
 
     // Handle title changes - broadcast to other users
     socket.on("title-change", (newTitle) => {
-      socket.broadcast.to(documentId).emit("title-update", newTitle)
+      try {
+        if (!newTitle || typeof newTitle !== 'string') {
+          return
+        }
+        socket.broadcast.to(documentId).emit("title-update", newTitle)
+      } catch (error) {
+        console.error("Error handling title-change:", error)
+      }
     })
 
     // Handle document save
