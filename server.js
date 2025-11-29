@@ -269,20 +269,26 @@ io.on("connection", socket => {
       if (documentUsers.has(documentId)) {
         const users = documentUsers.get(documentId)
 
+        // Get user info BEFORE deleting
+        const disconnectedUser = users.get(socket.id)
+
         // Remove user from the map
         if (users.has(socket.id)) {
           users.delete(socket.id)
 
-          // Notify others that user left
-          io.to(documentId).emit("user-left", {
-            userId: userInfo.userId,
-            username: userInfo.username,
-            activeUsers: Array.from(users.values()).map(u => ({
-              userId: u.userId,
-              username: u.username,
-              color: u.color
-            }))
-          })
+          // Only notify if we found the user info
+          if (disconnectedUser) {
+            // Notify others that user left
+            io.to(documentId).emit("user-left", {
+              userId: disconnectedUser.userId,
+              username: disconnectedUser.username,
+              activeUsers: Array.from(users.values()).map(u => ({
+                userId: u.userId,
+                username: u.username,
+                color: u.color
+              }))
+            })
+          }
         }
 
         // Clean up if no users left
