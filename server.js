@@ -147,6 +147,9 @@ function generateUserColor() {
 io.on("connection", socket => {
   console.log("User connected:", socket.id)
 
+  let currentDocumentId = null  // Track which document this socket is in
+  let currentUserInfo = null    // Track user info for this socket
+
   socket.on("get-document", async ({ documentId, shareToken }) => {
     try {
       // Use authenticated user from socket (set by middleware)
@@ -173,6 +176,22 @@ io.on("connection", socket => {
         return
       }
 
+      // If accessing via share link and not already a collaborator, add them
+      if (hasValidShareToken && !isOwner && !isCollaborator) {
+        const sharePermission = document.shareLink.permission || 'viewer'
+
+        // Add user to collaborators
+        document.collaborators.push({
+          user: authenticatedUser._id,
+          permission: sharePermission
+        })
+
+        await document.save()
+        console.log(`Added user ${authenticatedUser.username} as ${sharePermission} via share link`)
+      }
+
+      // Store current document ID for this socket
+      currentDocumentId = documentId
       socket.join(documentId)
 
       // Initialize user tracking for this document (use Map instead of Set)
@@ -188,6 +207,9 @@ io.on("connection", socket => {
         email: authenticatedUser.email,
         color: generateUserColor()
       }
+
+      // Store user info for this socket
+      currentUserInfo = userInfo
 
       const users = documentUsers.get(documentId)
       users.set(socket.id, userInfo) // Use socketId as key to prevent duplicates
@@ -214,96 +236,101 @@ io.on("connection", socket => {
       console.error("Error in get-document:", error)
       socket.emit("error", { message: "Failed to load document" })
     }
+  })
 
-    // Handle text changes
-    socket.on("send-changes", (delta) => {
-      try {
-        if (!delta) {
-          console.error("Invalid delta received")
-          return
-        }
-        socket.broadcast.to(documentId).emit("receive-changes", delta)
-      } catch (error) {
-        console.error("Error handling send-changes:", error)
+  // Handle text changes - at connection level
+  socket.on("send-changes", (delta) => {
+    try {
+      if (!delta || !currentDocumentId) {
+        console.error("Invalid delta or no document")
+        return
       }
-    })
+      socket.broadcast.to(currentDocumentId).emit("receive-changes", delta)
+    } catch (error) {
+      console.error("Error handling send-changes:", error)
+    }
+  })
 
-    // Handle cursor movement
-    socket.on("cursor-move", (cursorData) => {
-      try {
-        if (!cursorData || typeof cursorData.index !== 'number') {
-          return // Invalid cursor data
-        }
-        socket.broadcast.to(documentId).emit("cursor-update", {
-          userId: userInfo.userId,
-          username: userInfo.username,
-          color: userInfo.color,
-          ...cursorData
-        })
-      } catch (error) {
-        console.error("Error handling cursor-move:", error)
+  // Handle cursor movement - at connection level
+  socket.on("cursor-move", (cursorData) => {
+    try {
+      if (!cursorData || typeof cursorData.index !== 'number' || !currentDocumentId || !currentUserInfo) {
+        return
       }
-    })
+      socket.broadcast.to(currentDocumentId).emit("cursor-update", {
+        userId: currentUserInfo.userId,
+        username: currentUserInfo.username,
+        color: currentUserInfo.color,
+        ...cursorData
+      })
+    } catch (error) {
+      console.error("Error handling cursor-move:", error)
+    }
+  })
 
-    // Handle title changes - broadcast to other users
-    socket.on("title-change", (newTitle) => {
-      try {
-        if (!newTitle || typeof newTitle !== 'string') {
-          return
-        }
-        socket.broadcast.to(documentId).emit("title-update", newTitle)
-      } catch (error) {
-        console.error("Error handling title-change:", error)
+  // Handle title changes - at connection level
+  socket.on("title-change", (newTitle) => {
+    try {
+      if (!newTitle || typeof newTitle !== 'string' || !currentDocumentId) {
+        return
       }
-    })
+      socket.broadcast.to(currentDocumentId).emit("title-update", newTitle)
+    } catch (error) {
+      console.error("Error handling title-change:", error)
+    }
+  })
 
-    // Handle document save
-    socket.on("save-document", async (data, callback) => {
-      try {
-        await Document.findByIdAndUpdate(documentId, { data })
-        io.to(documentId).emit("document-saved")
-        if (callback) callback({ status: 'ok' })
-      } catch (e) {
-        console.error("Save error:", e)
-        if (callback) callback({ status: 'error', error: e.message })
+  // Handle document save - at connection level
+  socket.on("save-document", async (data, callback) => {
+    try {
+      if (!currentDocumentId) {
+        if (callback) callback({ status: 'error', error: 'No document loaded' })
+        return
       }
-    })
+      await Document.findByIdAndUpdate(currentDocumentId, { data })
+      io.to(currentDocumentId).emit("document-saved")
+      if (callback) callback({ status: 'ok' })
+    } catch (e) {
+      console.error("Save error:", e)
+      if (callback) callback({ status: 'error', error: e.message })
+    }
+  })
 
-    // Handle user disconnect
-    socket.on("disconnect", () => {
-      console.log("User disconnected:", socket.id)
+  // Handle user disconnect - at connection level
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id)
 
-      if (documentUsers.has(documentId)) {
-        const users = documentUsers.get(documentId)
+    if (currentDocumentId && documentUsers.has(currentDocumentId)) {
+      const users = documentUsers.get(currentDocumentId)
 
-        // Get user info BEFORE deleting
-        const disconnectedUser = users.get(socket.id)
+      // Get user info BEFORE deleting
+      const disconnectedUser = users.get(socket.id)
 
-        // Remove user from the map
-        if (users.has(socket.id)) {
-          users.delete(socket.id)
+      // Remove user from the map
+      if (users.has(socket.id)) {
+        users.delete(socket.id)
 
-          // Only notify if we found the user info
-          if (disconnectedUser) {
-            // Notify others that user left
-            io.to(documentId).emit("user-left", {
-              userId: disconnectedUser.userId,
-              username: disconnectedUser.username,
-              activeUsers: Array.from(users.values()).map(u => ({
-                userId: u.userId,
-                username: u.username,
-                color: u.color
-              }))
-            })
-          }
-        }
-
-        // Clean up if no users left
-        if (users.size === 0) {
-          documentUsers.delete(documentId)
+        // Only notify if we found the user info
+        if (disconnectedUser) {
+          // Notify others that user left
+          io.to(currentDocumentId).emit("user-left", {
+            userId: disconnectedUser.userId,
+            username: disconnectedUser.username,
+            activeUsers: Array.from(users.values()).map(u => ({
+              userId: u.userId,
+              username: u.username,
+              color: u.color
+            }))
+          })
         }
       }
-    })
+
+      // Clean up if no users left
+      if (users.size === 0) {
+        documentUsers.delete(currentDocumentId)
+        console.log(`Document ${currentDocumentId} cleaned up - no users remaining`)
+      }
+    }
   })
 })
 
