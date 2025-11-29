@@ -7,6 +7,11 @@ const Document = new Schema({
     type: String,
     default: "Untitled Document",
   },
+  createdBy: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
+    immutable: true  // Can never be changed
+  },
   owner: {
     type: Schema.Types.ObjectId,
     ref: "User",
@@ -19,7 +24,7 @@ const Document = new Schema({
       },
       permission: {
         type: String,
-        enum: ['viewer', 'editor'],
+        enum: ['owner', 'editor', 'viewer'],  // Added 'owner'
         default: 'viewer'
       }
     },

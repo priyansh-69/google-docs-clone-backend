@@ -25,6 +25,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^5.12.4",
+    "nanoid": "^3.3.11",
     "socket.io": "^4.0.1",
     "socket.io-client": "^4.8.1",
     "uuid": "^8.3.2",

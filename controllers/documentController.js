@@ -1,5 +1,5 @@
 const Document = require("../Document")
-const crypto = require("crypto")
+const { nanoid } = require("nanoid")
 
 // Create a new document
 exports.createDocument = async (req, res) => {
@@ -9,8 +9,14 @@ exports.createDocument = async (req, res) => {
         const document = new Document({
             _id: documentId,
             title: title || "Untitled Document",
-            owner: req.user.id,
-            collaborators: [],
+            createdBy: req.user.id,  // Original creator (never changes)
+            owner: req.user.id,       // Current owner (can be transferred)
+            collaborators: [
+                {
+                    user: req.user.id,
+                    permission: 'owner'  // Add creator as owner in collaborators
+                }
+            ],
             data: {}
         })
 
@@ -32,8 +38,9 @@ exports.getUserDocuments = async (req, res) => {
             ]
         })
             .sort({ createdAt: -1 })
-            .select('_id title owner createdAt updatedAt')
+            .select('_id title owner createdBy createdAt updatedAt')
             .populate('owner', 'username email')
+            .populate('createdBy', 'username email')
 
         res.json(documents)
     } catch (error) {
@@ -150,8 +157,8 @@ exports.generateShareLink = async (req, res) => {
             return res.status(400).json({ message: "Invalid permission type" })
         }
 
-        // Generate unique token
-        const token = crypto.randomBytes(32).toString('hex')
+        // Generate unique token (8 chars, URL-safe)
+        const token = nanoid(8)
 
         document.shareLink = {
             token,
