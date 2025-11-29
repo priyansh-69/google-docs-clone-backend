@@ -147,7 +147,7 @@ function generateUserColor() {
 io.on("connection", socket => {
   console.log("User connected:", socket.id)
 
-  socket.on("get-document", async ({ documentId }) => {
+  socket.on("get-document", async ({ documentId, shareToken }) => {
     try {
       // Use authenticated user from socket (set by middleware)
       const authenticatedUser = socket.user
@@ -156,12 +156,19 @@ io.on("connection", socket => {
       const document = await findOrCreateDocument(documentId)
 
       // Check if user has permission to access this document
-      const isOwner = document.owner && document.owner.toString() === authenticatedUser._id.toString()
-      const isCollaborator = document.collaborators && document.collaborators.some(
+      const isOwner = authenticatedUser && document.owner && document.owner.toString() === authenticatedUser._id.toString()
+      const isCollaborator = authenticatedUser && document.collaborators && document.collaborators.some(
         collab => collab.user && collab.user.toString() === authenticatedUser._id.toString()
       )
 
-      if (!isOwner && !isCollaborator) {
+      // Check if accessing via valid share link
+      const hasValidShareToken = shareToken &&
+        document.shareLink &&
+        document.shareLink.enabled &&
+        document.shareLink.token === shareToken
+
+      // Allow access if: owner, collaborator, OR valid share token
+      if (!isOwner && !isCollaborator && !hasValidShareToken) {
         socket.emit("error", { message: "You don't have permission to access this document" })
         return
       }
