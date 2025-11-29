@@ -169,6 +169,11 @@ io.on("connection", socket => {
       })
     })
 
+    // Handle title changes - broadcast to other users
+    socket.on("title-change", (newTitle) => {
+      socket.broadcast.to(documentId).emit("title-update", newTitle)
+    })
+
     // Handle document save
     socket.on("save-document", async (data, callback) => {
       try {
