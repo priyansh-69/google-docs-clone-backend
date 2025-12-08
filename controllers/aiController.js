@@ -20,31 +20,63 @@ exports.processAI = async (req, res) => {
 
         switch (action) {
             case "grammar":
-                prompt = `Please check and correct the grammar in the following text. Return ONLY the corrected text without any explanations or additional commentary:\n\n${text}`
+                prompt = `You are a grammar expert. Fix ALL grammar mistakes in this text.
+
+IMPORTANT: Return ONLY the corrected text. Do NOT add labels, explanations, or extra words.
+
+Examples:
+Input: "hello me is Priyansh"
+Output: "Hello, I am Priyansh."
+
+Input: "they was going home"
+Output: "They were going home."
+
+Now fix this:
+${text}`
                 break
             case "summarize":
-                prompt = `Please provide a concise summary of the following text. Keep it brief and to the point:\n\n${text}`
+                prompt = `Summarize this text in 1-2 sentences. Return ONLY the summary, no labels.
+
+${text}`
                 break
             case "enhance":
-                prompt = `Please enhance and improve the following text to make it more professional, clear, and engaging. Return ONLY the enhanced text without any explanations:\n\n${text}`
+                prompt = `Rewrite this text to be more professional and polished. Keep the same meaning. Return ONLY the improved text, no labels or explanations.
+
+${text}`
                 break
             case "expand":
-                prompt = `Please expand on the following text with more details and elaboration. Return ONLY the expanded text:\n\n${text}`
+                prompt = `Add 2-3 more sentences to this text with additional details. Return ONLY the complete expanded text, no labels.
+
+${text}`
                 break
             case "simplify":
-                prompt = `Please simplify the following text to make it easier to understand. Use simpler words and shorter sentences. Return ONLY the simplified text:\n\n${text}`
+                prompt = `Rewrite this using simple, easy words. Return ONLY the simplified text, no labels.
+
+${text}`
                 break
             default:
                 return res.status(400).json({ message: "Invalid action" })
         }
 
-        // Get the generative model
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+        // Get the generative model - using gemini-1.5-flash (free tier)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
         // Generate content
         const result = await model.generateContent(prompt)
         const response = await result.response
-        const generatedText = response.text()
+        let generatedText = response.text()
+
+        // Aggressive cleanup - remove ALL common labels and formatting
+        generatedText = generatedText
+            // Remove common prefixes
+            .replace(/^(Corrected text:|Corrected:|Summary:|Improved text:|Improved:|Enhanced:|Expanded text:|Expanded:|Simplified text:|Simplified:|Output:|Result:)\s*/gi, '')
+            // Remove "this is professionally enhanced" type suffixes
+            .replace(/\s*-\s*this is (professionally enhanced|improved|corrected|simplified|expanded)\.?$/gi, '')
+            // Remove surrounding quotes
+            .replace(/^["']|["']$/g, '')
+            // Remove markdown formatting
+            .replace(/^\*\*|\*\*$/g, '')
+            .trim()
 
         res.json({
             success: true,
