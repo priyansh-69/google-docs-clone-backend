@@ -10,7 +10,16 @@ const { apiLimiter } = require("./middleware/rateLimiter")
 const Document = require("./Document")
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/google-docs-clone")
+// Connect to MongoDB
+const mongoURI = process.env.MONGO_URI || "mongodb://localhost/google-docs-clone";
+console.log(`🔌 Attempting to connect to MongoDB...`); // Don't log URI for security
+
+mongoose.connect(mongoURI)
+  .then(() => console.log("✅ MongoDB connected successfully"))
+  .catch(err => {
+    console.error("❌ MongoDB connection error:", err);
+    process.exit(1); // Exit to force restart/log visibility
+  });
 
 // Initialize Express app
 const app = express()
@@ -333,6 +342,15 @@ async function findOrCreateDocument(id) {
   if (document) return document
   return await Document.create({ _id: id, data: defaultValue })
 }
+
+// Global Error Handler (Must be last middleware)
+app.use((err, req, res, next) => {
+  console.error("🔥 Global Server Error:", err.stack || err);
+  res.status(500).json({
+    message: "Internal Server Error",
+    error: process.env.NODE_ENV === 'production' ? 'Server Error' : err.message
+  });
+});
 
 const PORT = process.env.PORT || 3001
 
