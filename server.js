@@ -10,12 +10,7 @@ const { apiLimiter } = require("./middleware/rateLimiter")
 const Document = require("./Document")
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/google-docs-clone", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  useFindAndModify: false,
-  useCreateIndex: true,
-})
+mongoose.connect(process.env.MONGO_URI || "mongodb://localhost/google-docs-clone")
 
 // Initialize Express app
 const app = express()
@@ -25,9 +20,7 @@ app.set('trust proxy', 1)
 
 // Middleware
 // Security headers
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable for development, enable in production
-}))
+app.use(helmet())
 
 // CORS configuration
 const allowedOrigins = [
@@ -66,8 +59,7 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: false, limit: '10mb' }))
 
 // Data sanitization against NoSQL injection
-// TODO: Fix mongoSanitize compatibility issue - currently causing crash
-// app.use(mongoSanitize())
+app.use(mongoSanitize())
 
 // Rate limiting
 app.use('/api/', apiLimiter)

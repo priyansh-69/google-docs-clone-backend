@@ -28,10 +28,7 @@ beforeAll(async () => {
 
     const mongoUri = process.env.MONGO_TEST_URI || 'mongodb://localhost/google-docs-test';
     if (mongoose.connection.readyState === 0) {
-        await mongoose.connect(mongoUri, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
+        await mongoose.connect(mongoUri);
     }
 });
 
@@ -88,12 +85,12 @@ describe('Document API', () => {
             expect(response.body).toHaveProperty('message');
         });
 
-        it('should reject document creation with invalid UUID', async () => {
+        it('should reject document creation with empty documentId', async () => {
             const response = await request(app)
                 .post('/api/documents')
                 .set('Authorization', `Bearer ${authToken}`)
                 .send({
-                    documentId: 'invalid-uuid',
+                    documentId: '',
                     title: 'Test Document'
                 })
                 .expect(400);

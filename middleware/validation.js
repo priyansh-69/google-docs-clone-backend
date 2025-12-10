@@ -52,9 +52,7 @@ const createDocumentValidation = [
         .escape(),
     body('documentId')
         .notEmpty()
-        .withMessage('Document ID is required')
-        .isUUID()
-        .withMessage('Document ID must be a valid UUID'),
+        .withMessage('Document ID is required'),
     validate
 ];
 

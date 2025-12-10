@@ -29,12 +29,18 @@ const registerUser = async (req, res) => {
         }
 
         // Check if user exists
-        console.log('🔍 Checking if user exists:', email)
+        console.log('🔍 Checking if user exists:', { email, username })
         const userExists = await User.findOne({ email })
+        const usernameExists = await User.findOne({ username })
 
         if (userExists) {
-            console.log('❌ User already exists:', email)
-            return res.status(400).json({ message: "User already exists" })
+            console.log('❌ User email already exists:', email)
+            return res.status(400).json({ message: "User with this email already exists" })
+        }
+
+        if (usernameExists) {
+            console.log('❌ Username already exists:', username)
+            return res.status(400).json({ message: "Username is already taken" })
         }
 
         // Hash password

@@ -46,20 +46,9 @@ const Document = new Schema({
     },
     createdAt: Date
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+}, {
+  timestamps: true
 })
 
-// Update the updatedAt timestamp before saving
-Document.pre('save', function (next) {
-  this.updatedAt = Date.now()
-  next()
-})
 
 module.exports = model("Document", Document)

@@ -22,10 +22,7 @@ beforeAll(async () => {
     // Use in-memory database for testing
     const mongoUri = process.env.MONGO_TEST_URI || 'mongodb://localhost/google-docs-test';
     if (mongoose.connection.readyState === 0) {
-        await mongoose.connect(mongoUri, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
+        await mongoose.connect(mongoUri);
     }
 });
 
